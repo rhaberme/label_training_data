@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as _stc
 from PIL import Image
 from google.auth.transport.requests import AuthorizedSession
 from google.oauth2.service_account import Credentials
@@ -526,6 +527,48 @@ def _labeling_fragment(dataset_key: str) -> None:
 
     _maybe_prefetch(dataset_key, idx, all_ids, ss.image_ids, ss.mask_ids)
 
+    # st.components.v1.html renders in a real iframe → window.parent is the
+    # Streamlit app. Keyboard shortcuts and Nein-button styling both work
+    # reliably this way. The guard on window.parent._lr prevents duplicate
+    # listeners across fragment reruns.
+    _stc.html("""
+<script>
+(function () {
+    var p = window.parent;
+    if (p._lr) return;
+    p._lr = 1;
+    var d = p.document;
+    function styleNein() {
+        d.querySelectorAll('button').forEach(function (b) {
+            if ((b.textContent || '').indexOf('Nein') !== -1)
+                b.classList.add('btn-nein');
+        });
+    }
+    d.addEventListener('keydown', function (e) {
+        var t = e.target.tagName;
+        if (t==='INPUT'||t==='TEXTAREA'||t==='SELECT') return;
+        if (e.metaKey||e.ctrlKey||e.altKey) return;
+        function c(x) {
+            var done = false;
+            d.querySelectorAll('button').forEach(function (b) {
+                if (!done && (b.textContent||'').indexOf(x) !== -1) {
+                    b.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+                    done = true;
+                }
+            });
+        }
+        if      (e.key==='y'||e.key==='Y') c('Ja');
+        else if (e.key==='n'||e.key==='N') c('Nein');
+        else if (e.key==='ArrowLeft')  { e.preventDefault(); c('◀'); }
+        else if (e.key==='ArrowRight') { e.preventDefault(); c('▶'); }
+    });
+    new p.MutationObserver(styleNein)
+        .observe(d.body, {childList:true, subtree:true});
+    styleNein();
+})();
+</script>
+""", height=0)
+
 # ── Main ───────────────────────────────────────────────────────────────────
 
 _CSS = """
@@ -548,39 +591,51 @@ header[data-testid="stHeader"] { display: none !important; }
     border-radius: 99px !important; }
 
 /* ── Ja button (primary) ── */
-button[data-testid="baseButton-primary"] {
+/* Use kind= attribute which is stable across Streamlit versions;
+   data-testid changed from baseButton-* to stBaseButton-* in 1.36. */
+button[kind="primary"],
+button[data-testid="baseButton-primary"],
+button[data-testid="stBaseButton-primary"] {
     background: linear-gradient(135deg, #a6e3a1 0%, #94e2d5 100%) !important;
     color: #1e1e2e !important; border: none !important; border-radius: 12px !important;
     font-size: 1.1rem !important; font-weight: 800 !important;
     letter-spacing: 0.02em !important; min-height: 3.4rem !important;
     box-shadow: 0 4px 24px rgba(166,227,161,0.28) !important;
     transition: transform 0.1s, box-shadow 0.1s !important; }
-button[data-testid="baseButton-primary"]:hover {
+button[kind="primary"]:hover,
+button[data-testid="baseButton-primary"]:hover,
+button[data-testid="stBaseButton-primary"]:hover {
     transform: translateY(-2px) !important;
     box-shadow: 0 8px 32px rgba(166,227,161,0.48) !important; }
-button[data-testid="baseButton-primary"]:active {
+button[kind="primary"]:active,
+button[data-testid="baseButton-primary"]:active,
+button[data-testid="stBaseButton-primary"]:active {
     transform: translateY(1px) !important;
     box-shadow: 0 2px 10px rgba(166,227,161,0.2) !important; }
 
 /* ── Secondary buttons ── */
-button[data-testid="baseButton-secondary"] {
+button[kind="secondary"],
+button[data-testid="baseButton-secondary"],
+button[data-testid="stBaseButton-secondary"] {
     background: #313244 !important; color: #cdd6f4 !important;
     border: 1.5px solid #45475a !important; border-radius: 12px !important;
     font-size: 1.0rem !important; font-weight: 600 !important;
     min-height: 3.4rem !important;
     transition: all 0.1s !important; }
-button[data-testid="baseButton-secondary"]:hover {
+button[kind="secondary"]:hover,
+button[data-testid="baseButton-secondary"]:hover,
+button[data-testid="stBaseButton-secondary"]:hover {
     border-color: #cba6f7 !important; color: #cba6f7 !important;
     background: rgba(203,166,247,0.08) !important; }
-button[data-testid="baseButton-secondary"]:active { transform: scale(0.97) !important; }
+button[kind="secondary"]:active,
+button[data-testid="baseButton-secondary"]:active,
+button[data-testid="stBaseButton-secondary"]:active { transform: scale(0.97) !important; }
 
 /* ── Nein button (class added via JS) ── */
-.btn-nein {
+.btn-nein,
+.btn-nein:hover,
+.btn-nein:focus {
     background: rgba(243,139,168,0.08) !important;
-    border-color: #f38ba8 !important;
-    color: #f38ba8 !important; }
-.btn-nein:hover {
-    background: rgba(243,139,168,0.2) !important;
     border-color: #f38ba8 !important;
     color: #f38ba8 !important; }
 
@@ -686,45 +741,6 @@ def main() -> None:
                 )
 
     _labeling_fragment(dataset_key)
-
-    # JS: colour the Nein button red + keyboard shortcuts (Y/N/arrows).
-    # st.html() renders directly in the page DOM (no iframe), so document
-    # refers to the Streamlit app itself. A MutationObserver re-styles the
-    # button after every fragment rerun. Guards prevent duplicate listeners.
-    st.html("""
-<div style="display:none;height:0;overflow:hidden">
-<script>
-(function () {
-    function styleNein() {
-        document.querySelectorAll('button').forEach(function (b) {
-            if ((b.innerText || '').includes('Nein')) b.classList.add('btn-nein');
-        });
-    }
-    if (!window._labelerReady) {
-        window._labelerReady = true;
-        document.addEventListener('keydown', function (e) {
-            if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
-            if (e.metaKey || e.ctrlKey || e.altKey) return;
-            function click(txt) {
-                var done = false;
-                document.querySelectorAll('button').forEach(function (b) {
-                    if (!done && b.innerText && b.innerText.includes(txt)) {
-                        b.click(); done = true;
-                    }
-                });
-            }
-            if      (e.key === 'y' || e.key === 'Y') click('Ja');
-            else if (e.key === 'n' || e.key === 'N') click('Nein');
-            else if (e.key === 'ArrowLeft')  { e.preventDefault(); click('◀'); }
-            else if (e.key === 'ArrowRight') { e.preventDefault(); click('▶'); }
-        });
-        new MutationObserver(styleNein).observe(document.body, {childList:true, subtree:true});
-    }
-    styleNein();
-})();
-</script>
-</div>
-""")
 
 
 if __name__ == "__main__":
