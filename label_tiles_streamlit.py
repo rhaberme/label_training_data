@@ -458,7 +458,7 @@ def _labeling_fragment(dataset_key: str) -> None:
     col_hint.markdown(
         "<div style='text-align:center;padding-top:0.6rem'>"
         "<span style='color:#45475a;font-size:0.72rem'>"
-        "<kbd>J</kbd> Ja &nbsp; <kbd>N</kbd> Nein &nbsp; <kbd>← →</kbd> Navigation"
+        "<kbd>Y</kbd> Ja &nbsp; <kbd>N</kbd> Nein &nbsp; <kbd>← →</kbd> Navigation"
         "</span></div>",
         unsafe_allow_html=True,
     )
@@ -532,11 +532,13 @@ _CSS = """
 <style>
 /* ── Base ── */
 .stApp { background: #1e1e2e !important; color: #cdd6f4; }
-.block-container { padding: 1.1rem 2rem 2rem !important; max-width: 100% !important; }
+.block-container { padding: 0.75rem 2rem 2rem !important; max-width: 100% !important; }
+.appview-container > section.main { padding-top: 0 !important; }
 section[data-testid="stSidebar"] { background: #181825 !important;
     border-right: 1px solid #313244 !important; }
 section[data-testid="stSidebar"] > div { background: transparent !important; }
-#MainMenu, footer { visibility: hidden !important; }
+header[data-testid="stHeader"] { display: none !important; }
+#MainMenu, footer { display: none !important; }
 
 /* ── Progress bar ── */
 [data-testid="stProgressBar"] > div {
@@ -571,6 +573,16 @@ button[data-testid="baseButton-secondary"]:hover {
     border-color: #cba6f7 !important; color: #cba6f7 !important;
     background: rgba(203,166,247,0.08) !important; }
 button[data-testid="baseButton-secondary"]:active { transform: scale(0.97) !important; }
+
+/* ── Nein button (class added via JS) ── */
+.btn-nein {
+    background: rgba(243,139,168,0.08) !important;
+    border-color: #f38ba8 !important;
+    color: #f38ba8 !important; }
+.btn-nein:hover {
+    background: rgba(243,139,168,0.2) !important;
+    border-color: #f38ba8 !important;
+    color: #f38ba8 !important; }
 
 /* ── kbd ── */
 kbd {
@@ -674,6 +686,45 @@ def main() -> None:
                 )
 
     _labeling_fragment(dataset_key)
+
+    # JS: colour the Nein button red + keyboard shortcuts (Y/N/arrows).
+    # st.html() renders directly in the page DOM (no iframe), so document
+    # refers to the Streamlit app itself. A MutationObserver re-styles the
+    # button after every fragment rerun. Guards prevent duplicate listeners.
+    st.html("""
+<div style="display:none;height:0;overflow:hidden">
+<script>
+(function () {
+    function styleNein() {
+        document.querySelectorAll('button').forEach(function (b) {
+            if ((b.innerText || '').includes('Nein')) b.classList.add('btn-nein');
+        });
+    }
+    if (!window._labelerReady) {
+        window._labelerReady = true;
+        document.addEventListener('keydown', function (e) {
+            if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            function click(txt) {
+                var done = false;
+                document.querySelectorAll('button').forEach(function (b) {
+                    if (!done && b.innerText && b.innerText.includes(txt)) {
+                        b.click(); done = true;
+                    }
+                });
+            }
+            if      (e.key === 'y' || e.key === 'Y') click('Ja');
+            else if (e.key === 'n' || e.key === 'N') click('Nein');
+            else if (e.key === 'ArrowLeft')  { e.preventDefault(); click('◀'); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); click('▶'); }
+        });
+        new MutationObserver(styleNein).observe(document.body, {childList:true, subtree:true});
+    }
+    styleNein();
+})();
+</script>
+</div>
+""")
 
 
 if __name__ == "__main__":
