@@ -1,4 +1,4 @@
 google-auth==2.40.3
-google-api-python-client==2.172.0
+requests==2.32.3
 Pillow==11.2.1
 numpy==2.2.6
