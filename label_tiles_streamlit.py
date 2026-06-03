@@ -47,6 +47,7 @@ _composite_cache_lock = threading.RLock()
 
 _svc_account_info: dict = {}
 _save_lock = threading.Lock()
+_last_save_error: str | None = None
 
 # ── Drive REST endpoints ───────────────────────────────────────────────────
 _FILES_URL  = "https://www.googleapis.com/drive/v3/files"
@@ -280,6 +281,7 @@ def _save_state_async() -> None:
     filename = ss.state_filename
 
     def _do() -> None:
+        global _last_save_error
         with _save_lock:
             try:
                 if not file_id:
@@ -292,8 +294,9 @@ def _save_state_async() -> None:
                     headers={"Content-Type": "application/json"},
                 )
                 resp.raise_for_status()
-            except Exception:
-                pass
+                _last_save_error = None
+            except Exception as exc:
+                _last_save_error = str(exc)
 
     threading.Thread(target=_do, daemon=True).start()
 
@@ -339,10 +342,19 @@ def _initialize(dataset_key: str) -> None:
     state_filename = f"tile_labels_{dataset_key}.json"
     file_id = _find_file(cfg["state_folder_id"], state_filename)
     if file_id:
-        state = json.loads(download_bytes(file_id))
+        state = json.loads(_fetch_bytes(_session(), file_id))
     else:
         state = {"training": [], "unused": []}
-        file_id = None
+        resp = _session().post(
+            _UPLOAD_URL,
+            params={"uploadType": "multipart"},
+            files={
+                "metadata": (None, json.dumps({"name": state_filename, "parents": [cfg["state_folder_id"]]}), "application/json; charset=UTF-8"),
+                "media": (None, json.dumps(state, indent=2).encode(), "application/json"),
+            },
+        )
+        resp.raise_for_status()
+        file_id = resp.json()["id"]
 
     ss.label_state    = state
     ss.state_file_id  = file_id
@@ -739,6 +751,9 @@ def main() -> None:
                     "⏳ Bilder werden vorgeladen …</p>",
                     unsafe_allow_html=True,
                 )
+
+    if _last_save_error:
+        st.error(f"Speicherfehler: {_last_save_error}")
 
     _labeling_fragment(dataset_key)
 
