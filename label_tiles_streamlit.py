@@ -45,7 +45,6 @@ _composite_cache: dict[str, bytes] = {}   # tile_id  → JPEG bytes
 _bytes_cache_lock     = threading.RLock()
 _composite_cache_lock = threading.RLock()
 
-_svc_account_info: dict = {}
 _save_lock = threading.Lock()
 _last_save_error: str | None = None
 
@@ -66,13 +65,11 @@ def _make_session(info: dict) -> AuthorizedSession:
 
 @st.cache_resource
 def _session() -> AuthorizedSession:
-    global _svc_account_info
-    _svc_account_info = dict(st.secrets["gcp_service_account"])
-    return _make_session(_svc_account_info)
+    return _make_session(dict(st.secrets["gcp_service_account"]))
 
 
 def _thread_session() -> AuthorizedSession:
-    return _make_session(_svc_account_info)
+    return _make_session(dict(st.secrets["gcp_service_account"]))
 
 # ── Drive API wrappers ─────────────────────────────────────────────────────
 
@@ -270,35 +267,28 @@ def _tile_status(tile_id: str) -> str:
     return "open"
 
 
-def _save_state_async() -> None:
+def _save_state() -> None:
+    global _last_save_error
     ss = st.session_state
-    cfg = st.secrets["drive"][ss.active_dataset]
     state_copy = {
         "training": list(ss.label_state["training"]),
         "unused":   list(ss.label_state["unused"]),
     }
-    file_id  = ss.state_file_id
-    filename = ss.state_filename
-
-    def _do() -> None:
-        global _last_save_error
-        with _save_lock:
-            try:
-                if not file_id:
-                    return
-                session = _thread_session()
-                resp = session.patch(
-                    f"{_UPLOAD_URL}/{file_id}",
-                    params={"uploadType": "media"},
-                    data=json.dumps(state_copy, indent=2).encode(),
-                    headers={"Content-Type": "application/json"},
-                )
-                resp.raise_for_status()
-                _last_save_error = None
-            except Exception as exc:
-                _last_save_error = str(exc)
-
-    threading.Thread(target=_do, daemon=True).start()
+    file_id = ss.state_file_id
+    with _save_lock:
+        try:
+            if not file_id:
+                return
+            resp = _session().patch(
+                f"{_UPLOAD_URL}/{file_id}",
+                params={"uploadType": "media"},
+                data=json.dumps(state_copy, indent=2).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            _last_save_error = None
+        except Exception as exc:
+            _last_save_error = str(exc)
 
 
 def _label(category: str) -> None:
@@ -315,7 +305,7 @@ def _label(category: str) -> None:
         ss.label_state[category].append(tile_id)
         (ss.training_set if category == "training" else ss.unused_set).add(tile_id)
     ss.current_index = min(idx + 1, len(ss.all_ids) - 1)
-    _save_state_async()
+    _save_state()
 
 
 def _navigate(direction: int) -> None:
