@@ -583,6 +583,7 @@ section[data-testid="stSidebar"] { background: #181825 !important;
     border-right: 1px solid #313244 !important; }
 section[data-testid="stSidebar"] > div { background: transparent !important; }
 header[data-testid="stHeader"] { display: none !important; }
+[data-testid="collapsedControl"] { display: flex !important; }
 #MainMenu, footer { display: none !important; }
 
 /* ── Progress bar ── */
