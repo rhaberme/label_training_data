@@ -579,11 +579,22 @@ _CSS = """
 .stApp { background: #1e1e2e !important; color: #cdd6f4; }
 .block-container { padding: 0.75rem 2rem 2rem !important; max-width: 100% !important; }
 .appview-container > section.main { padding-top: 0 !important; }
-section[data-testid="stSidebar"] { background: #181825 !important;
-    border-right: 1px solid #313244 !important; }
+section[data-testid="stSidebar"] {
+    background: #181825 !important;
+    border-right: 1px solid #313244 !important;
+    transform: none !important;
+    min-width: 240px !important;
+    max-width: 240px !important; }
 section[data-testid="stSidebar"] > div { background: transparent !important; }
-header[data-testid="stHeader"] { display: none !important; }
-[data-testid="collapsedControl"] { display: flex !important; }
+[data-testid="stSidebarCollapseButton"],
+[data-testid="collapsedControl"] { display: none !important; }
+header[data-testid="stHeader"] {
+    height: 0 !important; min-height: 0 !important;
+    padding: 0 !important; overflow: visible !important;
+    background: transparent !important; border: none !important; }
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"] { display: none !important; }
 #MainMenu, footer { display: none !important; }
 
 /* ── Progress bar ── */
@@ -669,7 +680,8 @@ section[data-testid="stSidebar"] p { color: #bac2de; }
 
 
 def main() -> None:
-    st.set_page_config(layout="wide", page_title="Tile Labeling Tool", page_icon="🗺️")
+    st.set_page_config(layout="wide", page_title="Tile Labeling Tool", page_icon="🗺️",
+                       initial_sidebar_state="expanded")
     st.markdown(_CSS, unsafe_allow_html=True)
 
     datasets = _get_datasets()
